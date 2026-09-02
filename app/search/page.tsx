@@ -94,21 +94,24 @@ async function Results({
       if (!isValidPincode(q)) {
         return <ErrorState title="Invalid Pincode" message={PINCODE_INVALID_MSG} />;
       }
-      const { location, shops, office: matchedOffice, geoRadiusKm } = await searchByPincode(q);
+      const { location, shops, office: matchedOffice, geoRadiusKm, widened } = await searchByPincode(q);
+      const pos = location.postOfficeNames.join(", ");
 
       return (
         <div className="space-y-6">
           <LocationSummary
-            title={`Ration shops near pincode ${location.pincode}`}
-            meta={`${location.district}${matchedOffice ? ` / ${matchedOffice.name} taluk` : ""} · ${shops.length} shops found`}
+            title={`Ration shops in pincode ${location.pincode}`}
+            meta={`${location.district} · ${shops.length} shops found`}
             hint={
-              geoRadiusKm
-                ? `Shops within ≈ ${geoRadiusKm} km of your pincode's post offices (${location.postOfficeNames.join(", ")}), sorted nearest first`
-                : `Post offices: ${location.postOfficeNames.join(", ")}`
+              geoRadiusKm && !widened
+                ? `Only shops inside your pincode's own area — within ≈ ${geoRadiusKm} km of its post offices (${pos}), nearest first`
+                : geoRadiusKm && widened
+                  ? `No shops found right inside the pincode area, so the search was widened to ≈ ${geoRadiusKm} km around its post offices (${pos})`
+                  : `Could not map this pincode precisely — showing the matched taluk${matchedOffice ? ` (${matchedOffice.name})` : ""}. Post offices: ${pos}`
             }
           />
           {shops.length === 0 ? (
-            <EmptyState message="No ration shops could be matched in this area yet. Try searching by district or ARD number." />
+            <EmptyState message="No ration shops found for this pincode yet. Try searching by district, region or ARD number." />
           ) : (
             <ResultsToolbar shops={shops} showDistance />
           )}

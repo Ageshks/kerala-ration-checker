@@ -99,12 +99,13 @@ export const USER_AGENT =
 export const REQUEST_TIMEOUT_MS = 15_000;
 
 /**
- * Pincode searches include every ration shop whose official coordinates lie
- * within this straight-line distance of any of the pincode's post offices.
- * Covers pincode areas that straddle taluk borders without pulling in the
- * whole district.
+ * Pincode searches aim to return only shops *inside* the pincode's delivery
+ * area. Kerala post-office delivery zones are compact, so the first step is a
+ * tight straight-line radius around each of the pincode's post offices. If a
+ * pincode yields no shops at that radius (rural areas, sparse data), the
+ * search widens step-by-step and the UI honestly reports the widening.
  */
-export const PINCODE_RADIUS_KM = 8;
+export const PINCODE_RADIUS_STEPS: readonly number[] = [2.5, 5, 8];
 
 // ---------------------------------------------------------------------------
 // Rate limiting policy — politeness towards government servers.

@@ -12,7 +12,7 @@
 import { cached, cacheDelete } from "@/services/cache";
 import { getJson } from "@/services/http";
 import { ScrapeError, isScrapeError } from "@/services/errors";
-import { TTL, SOURCES, PINCODE_RADIUS_KM } from "@/lib/constants";
+import { TTL, SOURCES, PINCODE_RADIUS_STEPS } from "@/lib/constants";
 import { normalize, levenshtein } from "@/lib/utils";
 import { geocodePlace, haversineKm, type GeoPoint } from "@/services/geo";
 import { districtByCode, districtByName, FALLBACK_OFFICES } from "@/services/data/districts";
@@ -224,16 +224,18 @@ function rankByProximity(
 }
 
 /**
- * Pincode lookup -> ration shops near the pincode.
+ * Pincode lookup -> ration shops INSIDE the pincode's own area.
  *
- * Strategy: geocode the pincode's post offices (server-side), then keep every
- * shop in the district whose OFFICIAL coordinates lie within
- * PINCODE_RADIUS_KM of any of those post offices. This correctly handles
- * pincodes that straddle taluk borders without flooding the user with the
- * whole district, and needs no browser geolocation or map UI.
+ * Strategy: geocode the pincode's post offices (server-side), then keep ONLY
+ * shops whose OFFICIAL coordinates lie within PINCODE_RADIUS_STEPS[0] (~2.5 km,
+ * roughly a pincode's delivery area) of any of those post offices — users see
+ * just the stores that actually serve their pincode, never the whole district.
+ * If that finds nothing, the radius escalates through the remaining steps
+ * (5 km, 8 km) and `widened` is set so the UI can say so honestly.
  *
- * If geocoding is unavailable, we degrade gracefully to the name-matched
- * taluk office only — never to an arbitrary set of offices.
+ * Shops without official coordinates cannot be verified as inside the pincode
+ * and are excluded. If geocoding is unavailable entirely, we degrade to the
+ * name-matched taluk office only — never an arbitrary set of offices.
  */
 export async function searchByPincode(pincode: string): Promise<{
   location: PincodeLocation;
@@ -241,6 +243,8 @@ export async function searchByPincode(pincode: string): Promise<{
   office: Office | null;
   /** Straight-line radius actually applied, or null when geocoding failed. */
   geoRadiusKm: number | null;
+  /** True when results came from an escalated radius or the taluk fallback. */
+  widened: boolean;
 }> {
   const clean = pincode.trim();
   if (!isValidPincode(clean)) {
@@ -279,23 +283,55 @@ export async function searchByPincode(pincode: string): Promise<{
           fallback = [];
         }
       }
-      return { location, shops: fallback, office: primary, geoRadiusKm: null };
+      return { location, shops: fallback, office: primary, geoRadiusKm: null, widened: false };
     }
 
-    // Keep shops inside the radius around any post office. Shops that lack
-    // official coordinates are kept only when they belong to the name-matched
-    // taluk office, so they are never silently lost.
+    // Keep only shops verifiably INSIDE the pincode: official coordinates
+    // within the tightest radius (≈ the pincode's delivery area). Shops with
+    // no coordinates are excluded — they cannot be proven to belong here.
     const index = await districtShopIndex(district.code);
-    const radius = PINCODE_RADIUS_KM;
-    const near = index.filter((s) => {
-      if (s.latitude === null || s.longitude === null) {
-        return primary !== null && s.officeCode === primary.code;
+    const within = (radius: number) =>
+      index.filter(
+        (s) =>
+          s.latitude !== null &&
+          s.longitude !== null &&
+          anchors.some(
+            ({ point }) => haversineKm(s.latitude!, s.longitude!, point.lat, point.lng) <= radius
+          )
+      );
+
+    let radius = PINCODE_RADIUS_STEPS[0];
+    let near = within(radius);
+    for (const step of PINCODE_RADIUS_STEPS.slice(1)) {
+      if (near.length > 0) break;
+      radius = step;
+      near = within(radius);
+    }
+
+    // Every radius came up empty (e.g. a pincode whose local shops lack
+    // coordinates): fall back to the name-matched taluk office rather than
+    // showing nothing, and flag it.
+    if (near.length === 0) {
+      let fallback: RationShop[] = [];
+      if (primary) {
+        try {
+          fallback = await getShops(district.code, primary.code, primary.name);
+        } catch {
+          fallback = [];
+        }
       }
-      return anchors.some(({ point }) => haversineKm(s.latitude!, s.longitude!, point.lat, point.lng) <= radius);
-    });
+      const rankedFallback = rankByProximity(fallback, anchors);
+      return { location, shops: rankedFallback, office: primary, geoRadiusKm: null, widened: true };
+    }
 
     const shops = rankByProximity(near, anchors);
-    return { location, shops, office: primary, geoRadiusKm: radius };
+    return {
+      location,
+      shops,
+      office: primary,
+      geoRadiusKm: radius,
+      widened: radius > PINCODE_RADIUS_STEPS[0],
+    };
   });
 }
 
