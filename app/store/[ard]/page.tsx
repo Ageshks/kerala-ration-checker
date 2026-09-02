@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { isValidArd, ARD_INVALID_MSG } from "@/services/search";
+import { isValidArd, ARD_INVALID_MSG, nearestSupplycoContact, type OfficialStoreContact } from "@/services/search";
 import { getStoreDetails } from "@/services/scrapers/eposScraper";
 import { isScrapeError } from "@/services/errors";
 import { ErrorState } from "@/components/shared/error-state";
@@ -55,6 +55,13 @@ export default async function StorePage({ params }: { params: Promise<{ ard: str
 
   const { identity } = details;
 
+  // Dialable official contact fallback (nearest Supplyco outlet) — best-effort.
+  const supplycoContact = await nearestSupplycoContact(
+    identity.district,
+    details.shopMetadata?.latitude ?? null,
+    details.shopMetadata?.longitude ?? null
+  );
+
   return (
     <div className="container-max py-8">
       <Link href="/search" className="text-sm font-medium text-blue-700 hover:underline">
@@ -88,6 +95,7 @@ export default async function StorePage({ params }: { params: Promise<{ ard: str
             mobileMasked={details.shopMetadata?.mobileMasked}
             lat={details.shopMetadata?.latitude}
             lng={details.shopMetadata?.longitude}
+            supplycoContact={supplycoContact}
           />
         </CardContent>
       </Card>
@@ -113,6 +121,8 @@ export default async function StorePage({ params }: { params: Promise<{ ard: str
       <Separator className="my-8" />
     </div>
   );
+}
+
 function DetailList({
   ownerName,
   licenseNumber,
@@ -145,17 +155,19 @@ function ContactBlock({
   mobileMasked,
   lat,
   lng,
+  supplycoContact,
 }: {
   ardNumber: string;
   mobileMasked?: string | null;
   lat?: number | null;
   lng?: number | null;
+  supplycoContact?: OfficialStoreContact | null;
 }) {
   const mapsHref =
     lat != null && lng != null ? `https://www.google.com/maps?q=${lat},${lng}` : null;
 
   return (
-    <div className="space-y-3">
+    <div id="contact" className="scroll-mt-20 space-y-3">
       {mobileMasked && (
         <p className="text-sm">
           <span className="font-medium">Mobile Number:</span> {mobileMasked}{" "}
@@ -186,9 +198,34 @@ function ContactBlock({
           Store Number (ARD):{" "}
           <span className="font-mono font-medium text-slate-900">{ardNumber}</span>
         </p>
-        <p className="mt-2 text-sm">
-          If the individual shop number is unavailable, contact the official supply office:
-        </p>
+        {supplycoContact ? (
+          <div className="mt-3 rounded-lg border border-green-200 bg-green-50 p-3">
+            <p className="text-sm font-semibold text-green-900">
+              Nearest official Supplyco contact
+              {typeof supplycoContact.distanceKm === "number" && (
+                <span className="ml-1 font-normal text-green-700">
+                  · ≈ {supplycoContact.distanceKm} km away
+                </span>
+              )}
+            </p>
+            <p className="text-sm text-green-800">
+              {supplycoContact.name}
+              {supplycoContact.taluk ? `, ${supplycoContact.taluk}` : ""} ·{" "}
+              {supplycoContact.districtName}
+            </p>
+            <a
+              href={supplycoContact.telHref}
+              className={`${buttonVariants({ size: "lg", variant: "success" })} mt-2 w-full sm:w-auto`}
+            >
+              📞 Call {supplycoContact.phone}
+            </a>
+          </div>
+        ) : (
+          <p className="mt-2 text-sm">
+            The individual shop number is masked on the public portal — use the official
+            helpline below.
+          </p>
+        )}
         <p className="mt-2 rounded-lg bg-blue-50 p-3">
           <span className="font-semibold text-blue-900">Civil Supplies Helpline</span>
           <br />
@@ -212,5 +249,4 @@ function DetailRow({ label, value }: { label: string; value: string }) {
       <dd className="text-right font-medium text-slate-900">{value}</dd>
     </div>
   );
-}
 }

@@ -15,6 +15,7 @@
 import { TTL, SOURCES } from "@/lib/constants";
 import { cached } from "@/services/cache";
 import { getJson } from "@/services/http";
+import { ScrapeError } from "@/services/errors";
 import type { SupplycoOutlet } from "@/services/scrapers/types";
 
 interface RawOutlet {
@@ -67,9 +68,28 @@ function normalize(o: RawOutlet): SupplycoOutlet {
 /** Full outlet catalogue (one request per 24h). */
 export async function getAllOutlets(): Promise<SupplycoOutlet[]> {
   return cached<SupplycoOutlet[]>(`supplyco:outlets`, TTL.OUTLETS, async () => {
-    const res = await getJson<OutletsResponse>(`${API}?limit=2000`, { timeoutMs: 20_000 });
-    const raw = res.data ?? [];
-    return raw.map(normalize);
+    try {
+      const res = await getJson<OutletsResponse>(`${API}?limit=2000`, { timeoutMs: 20_000 });
+      const raw = res.data ?? [];
+      if (raw.length === 0) {
+        // Never cache an empty catalogue — treat it as a source problem so
+        // users get an honest retry instead of a silently empty page.
+        throw new ScrapeError(
+          "PARSE_ERROR",
+          "Supplyco outlet catalogue came back empty",
+          SOURCES.supplyco
+        );
+      }
+      return raw.map(normalize);
+    } catch (err) {
+      // Surface the real cause in server logs (the UI only shows a friendly
+      // message) so upstream breakage can be diagnosed quickly.
+      console.error(
+        "[supplycoScraper] getAllOutlets failed:",
+        err instanceof Error ? `${err.name}: ${err.message}` : err
+      );
+      throw err;
+    }
   });
 }
 
@@ -87,8 +107,10 @@ export async function searchOutlets(filter: OutletFilter, limit = 50): Promise<S
   const pincode = (filter.pincode ?? "").trim();
 
   const matches = outlets.filter((o) => {
-    if (district && !o.districtName.toLowerCase().includes(district)) return false;
-    if (pincode && o.pinCode !== pincode) return false;
+    const dName = (o.districtName ?? "").toLowerCase();
+    const pin = (o.pinCode ?? "").trim();
+    if (district && !dName.includes(district)) return false;
+    if (pincode && pin !== pincode) return false;
     if (q) {
       const haystack = [
         o.name,

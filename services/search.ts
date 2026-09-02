@@ -17,7 +17,7 @@ import { normalize, levenshtein } from "@/lib/utils";
 import { geocodePlace, haversineKm, type GeoPoint } from "@/services/geo";
 import { districtByCode, districtByName, FALLBACK_OFFICES } from "@/services/data/districts";
 import { getOffices, getShops, getStoreDetails } from "@/services/scrapers/eposScraper";
-import { searchOutlets } from "@/services/scrapers/supplycoScraper";
+import { getAllOutlets, searchOutlets } from "@/services/scrapers/supplycoScraper";
 import type {
   Office,
   PincodeLocation,
@@ -442,6 +442,72 @@ export async function searchSupplyco(input: {
   pincode?: string;
 }): Promise<SupplycoOutlet[]> {
   return searchOutlets(input);
+}
+
+export interface OfficialStoreContact {
+  name: string;
+  phone: string;
+  telHref: string;
+  taluk: string | null;
+  districtName: string;
+  distanceKm: number | null;
+}
+
+function supplycoContactOf(outlet: SupplycoOutlet, distanceKm: number | null): OfficialStoreContact {
+  const digits = outlet.phone!.replace(/\D/g, "");
+  return {
+    name: outlet.name,
+    phone: digits.length === 10 ? `+91 ${digits}` : outlet.phone!,
+    telHref: digits.length === 10 ? `tel:+91${digits}` : `tel:${digits}`,
+    taluk: outlet.taluk,
+    districtName: outlet.districtName,
+    distanceKm,
+  };
+}
+
+/**
+ * Best dialable official contact for a ration shop.
+ *
+ * ePOS masks individual shop mobile numbers for privacy, but Supplyco outlets
+ * publish complete phone numbers. When the shop's own number is unavailable,
+ * the nearest Supplyco outlet/depot in the same district is offered as the
+ * practical official contact point. Best-effort: returns null on any failure
+ * so store pages never break because of contact enrichment.
+ */
+export async function nearestSupplycoContact(
+  districtName: string,
+  lat?: number | null,
+  lng?: number | null
+): Promise<OfficialStoreContact | null> {
+  try {
+    const outlets = await getAllOutlets();
+    const want = districtName.trim().toLowerCase();
+    const candidates = outlets.filter((o) => {
+      if (!o.status || !o.phone) return false;
+      const have = o.districtName.trim().toLowerCase();
+      return have === want || have.includes(want) || want.includes(have);
+    });
+    if (candidates.length === 0) return null;
+
+    if (lat != null && lng != null) {
+      let best: { outlet: SupplycoOutlet; km: number } | null = null;
+      for (const o of candidates) {
+        if (o.latitude == null || o.longitude == null) continue;
+        const km = haversineKm(lat, lng, o.latitude, o.longitude);
+        if (!best || km < best.km) best = { outlet: o, km };
+      }
+      if (best) return supplycoContactOf(best.outlet, Math.round(best.km * 10) / 10);
+    }
+
+    // No shop coordinates: prefer a district/depot level office, else the first.
+    const preferred =
+      candidates.find((o) =>
+        /depot|wholesale|district|dfso/i.test(`${o.outletType} ${o.depot ?? ""}`)
+      ) ?? candidates[0];
+    return supplycoContactOf(preferred, null);
+  } catch {
+    return null;
+  }
 }
 
 /** Invalidate a cached ARD stock entry (used by the refresh action). */

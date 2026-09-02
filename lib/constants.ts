@@ -87,7 +87,8 @@ export const CIVIL_SUPPLIES_CONTACT = "Commissionerate of Civil Supplies, Public
 // ---------------------------------------------------------------------------
 export const SOURCES = {
   epos: "https://epos.kerala.gov.in",
-  supplyco: "https://www.supplycokerala.com",
+  /** Supplyco apex host — the www. variant 301-redirects here. */
+  supplyco: "https://supplycokerala.com",
   indiaPost: "https://api.postalpincode.in",
   /** OpenStreetMap Nominatim — used to locate pincode post offices (server-side only). */
   nominatim: "https://nominatim.openstreetmap.org",

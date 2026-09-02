@@ -54,6 +54,12 @@ export function ShopCard({ shop }: { shop: ShopWithRank }) {
         <p>
           <span className="font-medium">License:</span> {shop.licenseNumber || "—"}
         </p>
+        {shop.mobileMasked && (
+          <p>
+            <span className="font-medium">Phone:</span> {shop.mobileMasked}{" "}
+            <span className="text-xs text-muted-foreground">(masked on ePOS)</span>
+          </p>
+        )}
         {address && (
           <a
             href={address}
@@ -70,7 +76,10 @@ export function ShopCard({ shop }: { shop: ShopWithRank }) {
         <Link href={`/store/${shop.ardNumber}`} className={buttonVariants({ size: "sm" })}>
           Check Availability
         </Link>
-        <Link href="/about#contact" className={buttonVariants({ size: "sm", variant: "outline" })}>
+        <Link
+          href={`/store/${shop.ardNumber}#contact`}
+          className={buttonVariants({ size: "sm", variant: "outline" })}
+        >
           Contact Store
         </Link>
       </CardFooter>

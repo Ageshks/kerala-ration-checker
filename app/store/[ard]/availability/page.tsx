@@ -7,7 +7,7 @@ import { isScrapeError } from "@/services/errors";
 import { buildAvailability } from "@/lib/availability";
 import { ErrorState } from "@/components/shared/error-state";
 import { AvailabilityPanel } from "@/components/shared/availability-panel";
-import { SOURCES } from "@/lib/constants";
+import { SOURCES, HELPLINE_PHONE, HELPLINE_TEL } from "@/lib/constants";
 
 export const dynamic = "force-dynamic";
 /** Serverless hosts: allow time for polite, cold scrapes of government servers. */
@@ -81,6 +81,14 @@ export default async function AvailabilityPage({ params }: { params: Promise<{ a
           <strong>Disclaimer:</strong> Ration availability information is collected from
           publicly available official sources. Actual stock availability may change. Users
           are advised to contact the respective ration shop or authorities before visiting.
+        </p>
+
+        <p className="mt-4 rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
+          <strong>Before you visit:</strong> stock can change quickly. Call the shop or the{" "}
+          <a href={`tel:${HELPLINE_TEL}`} className="font-bold underline">
+            Civil Supplies Helpline {HELPLINE_PHONE}
+          </a>{" "}
+          (toll free 1967) to confirm availability.
         </p>
 
         <p className="mt-4 text-xs text-muted-foreground">

@@ -1,9 +1,15 @@
 import type { SupplycoOutlet } from "@/services/scrapers/types";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { buttonVariants } from "@/components/ui/button";
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 
 function addressOf(o: SupplycoOutlet): string {
   return [o.address1, o.address2, o.address3].filter(Boolean).join(", ");
+}
+
+function telHref(phone: string): string {
+  const digits = phone.replace(/\D/g, "");
+  return digits.length === 10 ? `tel:+91${digits}` : `tel:${digits}`;
 }
 
 function mapsUrl(o: SupplycoOutlet): string | null {
@@ -37,7 +43,7 @@ export function OutletCard({ outlet }: { outlet: SupplycoOutlet }) {
         {outlet.phone && (
           <p>
             <span className="font-medium">Phone:</span>{" "}
-            <a className="text-blue-700 underline-offset-2 hover:underline" href={`tel:${outlet.phone}`}>
+            <a className="text-blue-700 underline-offset-2 hover:underline" href={telHref(outlet.phone)}>
               +91 {outlet.phone}
             </a>
           </p>
@@ -59,6 +65,17 @@ export function OutletCard({ outlet }: { outlet: SupplycoOutlet }) {
           </a>
         )}
       </CardContent>
+
+      {outlet.phone && (
+        <CardFooter>
+          <a
+            href={telHref(outlet.phone)}
+            className={`${buttonVariants({ size: "sm", variant: "success" })} w-full sm:w-auto`}
+          >
+            📞 Call Now
+          </a>
+        </CardFooter>
+      )}
     </Card>
   );
 }
